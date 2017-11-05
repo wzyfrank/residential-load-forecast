@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import changeInterval
 import load_weather_corr
-import cycles
 
 #### add one neural network layer ####
 def add_layer(inputs, in_size, out_size, activation_function=None):
@@ -21,7 +20,7 @@ def add_layer(inputs, in_size, out_size, activation_function=None):
 
 
 #### neural network forecast
-def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, humidity, pressure, dailycycle, weeklycycle):
+def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, pressure):
     ############################ Iteration Parameter ##########################
     # maximum iteration
     Max_iter = 20000
@@ -29,7 +28,7 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
     epsilon = 1e-5
     last_l = 10000
     # set of features
-    set_fea = 6
+    set_fea = 4
     # number of neurons in hidden layers
     N_neuron = 50
     
@@ -59,7 +58,8 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
     init = tf.global_variables_initializer()
     # run
     sess = tf.Session()
-    
+    # init.
+    sess.run(init)     
     
     
     n_days = int(load_weekday.size / T)
@@ -68,8 +68,7 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
     RMSPE_sum = 0.0
     
     for curr_day in range(n_train + n_lag, n_days-1):
-        # init.
-        sess.run(init)   
+  
     
         y_train = np.zeros((n_train, T))
         X_train = np.zeros((n_train, T * n_lag * set_fea))
@@ -80,8 +79,6 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
             X_train[row,1*T*n_lag:2*T*n_lag] = temperature[train_day * T - n_lag * T: train_day * T]
             X_train[row,2*T*n_lag:3*T*n_lag] = humidity[train_day * T - n_lag * T: train_day * T]
             X_train[row,3*T*n_lag:4*T*n_lag] = pressure[train_day * T - n_lag * T: train_day * T]
-            X_train[row,4*T*n_lag:5*T*n_lag] = dailycycle[train_day * T - n_lag * T: train_day * T]
-            X_train[row,5*T*n_lag:6*T*n_lag] = weeklycycle[train_day * T - n_lag * T: train_day * T]
             
             row += 1
         max_load = np.max(X_train[:, 0*T*n_lag:1*T*n_lag])
@@ -93,8 +90,6 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
         X_test[0, 1*T*n_lag:2*T*n_lag] = temperature[curr_day*T - n_lag*T: curr_day*T]
         X_test[0, 2*T*n_lag:3*T*n_lag] = humidity[curr_day*T - n_lag*T: curr_day*T]
         X_test[0, 3*T*n_lag:4*T*n_lag] = pressure[curr_day*T - n_lag*T: curr_day*T]
-        X_test[0, 4*T*n_lag:5*T*n_lag] = dailycycle[curr_day*T - n_lag*T: curr_day*T]
-        X_test[0, 5*T*n_lag:6*T*n_lag] = weeklycycle[curr_day*T - n_lag*T: curr_day*T]
         
         y_test = load_weekday[curr_day*T: curr_day *T + T]
         
@@ -108,7 +103,7 @@ def NN_forecast_weather_cycles(load_weekday, n_train, n_lag, T, temperature, hum
         while (i < Max_iter):
             # training
             (t_step, l) = sess.run([train_step, loss], feed_dict={xs: X_train, ys: y_train})
-            if(abs(last_l - l) < epsilon and i > 8000):
+            if(abs(last_l - l) < epsilon):
                 break
             else:
                 last_l = l
@@ -163,10 +158,8 @@ if __name__ == "__main__":
     # import weather data
     (temperature, humidity, pressure) = load_weather_corr.getWeatherFeature()
     
-    # import cycles data
-    (dailycycle, weeklycycle) = cycles.getCycles()
     
     sumLoad = changeInterval.From15minTo1hour(sumLoad)
     # call neural network forecast
-    (MAPE_avg, RMSPE_avg) = NN_forecast_weather_cycles(sumLoad, n_train, n_lag, T, temperature, humidity, pressure, dailycycle, weeklycycle)
+    (MAPE_avg, RMSPE_avg) = NN_forecast_weather(sumLoad, n_train, n_lag, T, temperature, humidity, pressure)
     print('forecast result MAPE: %.2f, RMSPE: %.2f' % (MAPE_avg, RMSPE_avg))

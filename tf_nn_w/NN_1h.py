@@ -25,7 +25,7 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
     # maximum iteration
     Max_iter = 20000
     # stopping criteria
-    epsilon = 1e-4
+    epsilon = 1e-5
     last_l = 10000
     # set of features
     set_fea = 4
@@ -49,8 +49,8 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
     #loss = tf.reduce_mean(tf.reduce_sum(tf.square(ys - prediction), 1))  
     loss = T * tf.reduce_mean(tf.square(ys - prediction) )  
     
-    loss += 1e-1 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
-    loss += 1e-1 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
+    loss += 1e-2 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
+    loss += 1e-2 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
     
     # training step
     train_step = tf.train.AdamOptimizer().minimize(loss)
@@ -81,8 +81,8 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
             X_train[row,3*T*n_lag:4*T*n_lag] = pressure[train_day * T - n_lag * T: train_day * T]
             
             row += 1
-        max_load = np.max(X_train)
-        min_load = np.min(X_train)    
+        max_load = np.max(X_train[:, 0*T*n_lag:1*T*n_lag])
+        min_load = np.min(X_train[:, 0*T*n_lag:1*T*n_lag])    
 		
         # building test data
         X_test = np.zeros((1, T * n_lag * set_fea))
@@ -103,7 +103,7 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
         while (i < Max_iter):
             # training
             (t_step, l) = sess.run([train_step, loss], feed_dict={xs: X_train, ys: y_train})
-            if(abs(last_l - l) < epsilon):
+            if(abs(last_l - l) < epsilon and i > 8000):
                 break
             else:
                 last_l = l
@@ -114,12 +114,12 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
         y_pred = prediction.eval(session = sess, feed_dict={xs: X_test})
         y_pred = y_pred * (max_load - min_load) + min_load
         # plot daily forecast
-        
+        '''
         xaxis = range(T)
         plt.step(xaxis, y_pred.flatten(), 'r')
         plt.step(xaxis, y_test.flatten(), 'g')
         plt.show()
-        
+        '''
 
         mape = predict_util.calMAPE(y_test, y_pred)
         rmspe = predict_util.calRMSPE(y_test, y_pred)
@@ -142,9 +142,9 @@ def NN_forecast_weather(load_weekday, n_train, n_lag, T, temperature, humidity, 
     
 if __name__ == "__main__":
     # number of days in training set    
-    n_train = 20
+    n_train = 50
     # number of lags
-    n_lag = 7
+    n_lag = 1
     # time intervals per day
     T= 24
    
