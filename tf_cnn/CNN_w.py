@@ -5,9 +5,56 @@ import readData
 import predict_util
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import load_weather_corr
+import changeInterval
 
 
-
+#### generate data with weather features ####
+def genData_W(user_load, n_train, temperature, humidity, pressure, n_valid, n_lag, T, curr_day):
+    ################## generate data ##########################################
+    
+    # number of feature sets : 4
+    num_fea_set = 4
+    
+    y_train = np.zeros((n_train, T))
+    X_train = np.zeros((n_train, T, n_lag, num_fea_set))
+    
+    y_valid = np.zeros((n_valid, T))
+    X_valid = np.zeros((n_valid, T, n_lag, num_fea_set))
+    
+    row = 0
+    for train_day in range(curr_day - n_train - n_valid, curr_day - n_valid):
+        y_train[row,:] = user_load[train_day * T : train_day * T + T]
+        for h in range(n_lag):
+            X_train[row, :, h, 0] = user_load[train_day * T - n_lag * T + h * T: train_day * T - n_lag * T + (h+1) * Ｔ]
+            X_train[row, :, h, 1] = temperature[train_day * T - n_lag * T + h * T: train_day * T - n_lag * T + (h+1) * Ｔ]
+            X_train[row, :, h, 2] = humidity[train_day * T - n_lag * T + h * T: train_day * T - n_lag * T + (h+1) * Ｔ]
+            X_train[row, :, h, 3] = pressure[train_day * T - n_lag * T + h * T: train_day * T - n_lag * T + (h+1) * Ｔ]
+        row += 1
+    
+    row = 0
+    for valid_day in range(curr_day - n_valid, curr_day):
+        y_valid[row,:] = user_load[valid_day * T : valid_day * T + T]
+        for h in range(n_lag):
+            X_valid[row, :, h, 0] = user_load[valid_day * T - n_lag * T + h * T: valid_day * T - n_lag * T + (h+1) * Ｔ]
+            X_valid[row, :, h, 1] = temperature[valid_day * T - n_lag * T + h * T: valid_day * T - n_lag * T + (h+1) * Ｔ]
+            X_valid[row, :, h, 2] = humidity[valid_day * T - n_lag * T + h * T: valid_day * T - n_lag * T + (h+1) * Ｔ]
+            X_valid[row, :, h, 3] = pressure[valid_day * T - n_lag * T + h * T: valid_day * T - n_lag * T + (h+1) * Ｔ]
+        row += 1    
+        
+    # building test data
+    X_test = np.zeros((1, T, n_lag, num_fea_set))
+    for h in range(n_lag):
+        X_test[row, :, h, 0] = user_load[curr_day * T - n_lag * T + h * T: curr_day * T - n_lag * T + (h+1) * Ｔ]
+        X_test[row, :, h, 1] = temperature[curr_day * T - n_lag * T + h * T: curr_day * T - n_lag * T + (h+1) * Ｔ]
+        X_test[row, :, h, 2] = humidity[curr_day * T - n_lag * T + h * T: curr_day * T - n_lag * T + (h+1) * Ｔ]
+        X_test[row, :, h, 3] = pressure[curr_day * T - n_lag * T + h * T: curr_day * T - n_lag * T + (h+1) * Ｔ]
+    y_test = user_load[curr_day*T: curr_day *T + T]
+    
+    return(X_train, y_train, X_valid, y_valid, X_test, y_test)
+    
+    
+    
 #### add one neural network layer ####
 def add_layer(inputs, in_size, out_size, activation_function=None):
     Weights = tf.Variable(tf.random_normal([in_size, out_size]))
@@ -21,21 +68,28 @@ def add_layer(inputs, in_size, out_size, activation_function=None):
 
 
 #### neural network forecast
-def NN_forecast(load_weekday, n_train, n_lag, T):
+def NN_forecast(sumLoad, temperature, humidity, pressure, n_train, n_valid, n_lag, T):
     ############################ Iteration Parameter ##########################
     # maximum iteration
     Max_iter = 20000
     # stopping criteria
-    epsilon = 1e-4
+    epsilon = 1e-3
     last_l = 100000
-    #display_step = 100
+    display_step = 100
+    num_fea_set = 4
+    
+    # normalize the load
+    minload = min(sumLoad)
+    maxload = max(sumLoad)
+    sumLoad = (sumLoad - minload) / (maxload - minload)
+    
     
     ############################ TensorFlow ###################################    
     # place holders
-    xs = tf.placeholder(tf.float32, [None, T * n_lag])
+    xs = tf.placeholder(tf.float32, [None, T, n_lag, num_fea_set])
     ys = tf.placeholder(tf.float32, [None, T])
     
-    input_layer = tf.reshape(xs, [-1, T, n_lag, 1])
+    input_layer = tf.reshape(xs, [-1, T, n_lag, num_fea_set])
         
     # Convolutional Layer #1
     # Computes 32 features using a 5x5 filter with ReLU activation.
@@ -45,7 +99,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     conv1 = tf.layers.conv2d(
           inputs=input_layer,
           filters=32,
-          kernel_size=[4, 4],
+          kernel_size=[2, 2],
           padding="same",
           activation=tf.nn.relu)
     
@@ -86,24 +140,27 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     # output layer
     (prediction, wo, bo) = add_layer(l2, N_neuron, T, None)
     
-    # loss function, RMSPE
+    
+    ##### loss function, RMSE #####
     #loss = tf.reduce_mean(tf.reduce_sum(tf.square(ys - prediction), 1))  
     loss = T * tf.reduce_mean(tf.square(ys - prediction) )  
+    loss += 1e-1 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
+    loss += 1e-1 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
     
-    loss += 1e-3 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
-    loss += 1e-3 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
     
-    # training step
+    ##### training step #####
     train_step = tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
     #train_step = tf.train.AdagradOptimizer(learning_rate=1).minimize(loss)
     
+    
+    ##### session init #####
     init = tf.global_variables_initializer()
     # run
     sess = tf.Session()
      
     
     
-    n_days = int(load_weekday.size / T)
+    n_days = int(sumLoad.size / T)
     ################## generate data ##########################################
     MAPE_sum = 0.0
     RMSPE_sum = 0.0
@@ -111,34 +168,16 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     for curr_day in range(n_train + n_lag, n_days-1):
         # init.
         sess.run(init) 
-    
-        y_train = np.zeros((n_train, T))
-        X_train = np.zeros((n_train, T * n_lag))
-        row = 0
-        for train_day in range(curr_day - n_train, curr_day):
-            y_train[row,:] = load_weekday[train_day * T : train_day * T + T]
-            X_train[row,0*T*n_lag:1*T*n_lag] = load_weekday[train_day * T - n_lag * T: train_day * T]
-            row += 1
-        max_load = np.max(X_train)
-        min_load = np.min(X_train)    
-		
-        # building test data
-        X_test = np.zeros((1, T * n_lag))
-        X_test[0, 0*T*n_lag:1*T*n_lag] = load_weekday[curr_day*T - n_lag*T: curr_day*T]
-        y_test = load_weekday[curr_day*T: curr_day *T + T]
+        # get data
+        (X_train, y_train, X_valid, y_valid, X_test, y_test) = genData_W(sumLoad, n_train, temperature, humidity, pressure, n_valid, n_lag, T, curr_day)
         
-        X_train = (X_train-min_load) / (max_load - min_load)
-        y_train = (y_train-min_load) / (max_load - min_load)
-        X_test = (X_test-min_load) / (max_load - min_load)
-                
-
         # training 
         i = 0
         while (i < Max_iter):
             # training
             (t_step, l) = sess.run([train_step, loss], feed_dict={xs: X_train, ys: y_train})
-            #if((i+1) % display_step == 0):
-                #print('iteration number %d, loss is %2f' % (i+1, l))
+            if((i+1) % display_step == 0):
+                print('iteration number %d, loss is %2f' % (i+1, l))
             if(abs(last_l - l) < epsilon):
                 break
             else:
@@ -148,7 +187,8 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
         
         #y_ = prediction.eval(session = sess, feed_dict={xs: X_train})
         y_pred = prediction.eval(session = sess, feed_dict={xs: X_test})
-        y_pred = y_pred * (max_load - min_load) + min_load
+        y_pred = y_pred * (maxload - minload) + minload
+        y_test = y_test * (maxload - minload) + minload
         # plot daily forecast
         
         xaxis = range(T)
@@ -178,19 +218,27 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     
 if __name__ == "__main__":
     # number of days in training set    
-    n_train = 20
+    n_train = 50
     # number of lags
     n_lag = 8
+    # number of valid
+    n_valid = 0
+    
     # time intervals per day
-    T= 96
+    T= 24
    
     # import load data
     data = readData.loadResidentialData()
     sumLoad = np.zeros((35040,))
-    #userLoad = readData.getUserData(data, 0)
+    
+    # aggregate load data, normalize load data and change interval from 15min to 1h
     for i in range(144):
         sumLoad += readData.getUserData(data, i)
+    sumLoad = changeInterval.From15minTo1hour(sumLoad)
+        
+    # import weather data
+    (temperature, humidity, pressure) = load_weather_corr.getWeatherFeature()
     
     # call neural network forecast
-    (MAPE_avg, RMSPE_avg) = NN_forecast(sumLoad, n_train, n_lag, T)
+    (MAPE_avg, RMSPE_avg) = NN_forecast(sumLoad, temperature, humidity, pressure, n_train, n_valid, n_lag, T)
     print('forecast result MAPE: %.2f, RMSPE: %.2f' % (MAPE_avg, RMSPE_avg))
