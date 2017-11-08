@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 
-
 #### add one neural network layer ####
 def add_layer(inputs, in_size, out_size, activation_function=None):
     Weights = tf.Variable(tf.random_normal([in_size, out_size]))
@@ -20,28 +19,21 @@ def add_layer(inputs, in_size, out_size, activation_function=None):
     return (outputs, Weights, biases)
 
 
-#### neural network forecast
+#### neural network forecast ####
 def NN_forecast(load_weekday, n_train, n_lag, T):
-    ############################ Iteration Parameter ##########################
-    # maximum iteration
-    Max_iter = 20000
-    # stopping criteria
-    epsilon = 1e-4
-    last_l = 100000
-    display_step = 100
-    
     ############################ TensorFlow ###################################    
     # place holders
     xs = tf.placeholder(tf.float32, [None, T * n_lag])
     ys = tf.placeholder(tf.float32, [None, T])
     
+    # 0. input layer
     input_layer = tf.reshape(xs, [-1, T * n_lag, 1])
         
-    # Convolutional Layer #1
-    # Computes 32 features using a 5x5 filter with ReLU activation.
+    # 1. Convolutional Layer #1
+    # Computes 32 features using a 4X1 filter with ReLU activation.
     # Padding is added to preserve width and height.
-    # Input Tensor Shape: [batch_size, T, n_lag, 1]
-    # Output Tensor Shape: [batch_size, T, n_lag, 32]
+    # Input Tensor Shape: [batch_size, T * n_lag, 1]
+    # Output Tensor Shape: [batch_size, T * n_lag, 32]
     conv1 = tf.layers.conv1d(
           inputs=input_layer,
           filters=32,
@@ -49,36 +41,33 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
           padding="same",
           activation=tf.nn.relu)
     
-    # Pooling Layer #1
+    # 2. Pooling Layer #1
     # First max pooling layer with a 2x2 filter and stride of 2
-    # Input Tensor Shape: [batch_size, T, n_lag, 32]
-    # Output Tensor Shape: [batch_size, T/2, n_lag/2, 32]
+    # Input Tensor Shape: [batch_size, T * n_lag, 32]
+    # Output Tensor Shape: [batch_size, T * n_lag / 2, 32]
     pool1 = tf.layers.max_pooling1d(inputs=conv1, pool_size=2, strides=2)
     pool1_flat = tf.reshape(pool1, [-1, T * n_lag * 16])
   
+    # 3. hidden layer (Full Connection Layer)
     N_neuron = 50
-    # hidden layers
     (l1, w1, b1) = add_layer(pool1_flat, T * n_lag * 16, N_neuron, activation_function=tf.nn.relu)
-    #(l2, w2, b2) = add_layer(l1, N_neuron, N_neuron, activation_function=tf.nn.tanh)
     
-    # output layer
+    # 4. output layer
     (prediction, wo, bo) = add_layer(l1, N_neuron, T, None)
     
-    # loss function, RMSPE
-    #loss = tf.reduce_mean(tf.reduce_sum(tf.square(ys - prediction), 1))  
+    
+    # loss function, RMSE
     loss = T * tf.reduce_mean(tf.square(ys - prediction) )  
     loss += 1e-3 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
-    #loss += 1e-3 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
+    
     # training step
     train_step = tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
-    #train_step = tf.train.AdagradOptimizer(learning_rate=1).minimize(loss)
     
     init = tf.global_variables_initializer()
     # run
     sess = tf.Session()
     # init.
-    sess.run(init)      
-    
+    #sess.run(init)      
     
     n_days = int(load_weekday.size / T)
     ################## generate data ##########################################
@@ -86,9 +75,10 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     RMSPE_sum = 0.0
     
     for curr_day in range(n_train + n_lag, n_days-1):
-        # init.
-        #sess.run(init) 
-    
+        #init. network parameters
+        sess.run(init) 
+        
+        #### prepare training and test data ####
         y_train = np.zeros((n_train, T))
         X_train = np.zeros((n_train, T * n_lag))
         row = 0
@@ -107,8 +97,15 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
         X_train = (X_train-min_load) / (max_load - min_load)
         y_train = (y_train-min_load) / (max_load - min_load)
         X_test = (X_test-min_load) / (max_load - min_load)
-                
-
+            
+        
+        ############################ Training ##########################
+        # maximum iteration
+        Max_iter = 20000
+        # stopping criteria
+        epsilon = 1e-4
+        last_l = 100000
+        display_step = 100
         # training 
         i = 0
         while (i < Max_iter):
@@ -122,8 +119,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
                 last_l = l
                 i = i+1
             
-        
-        #y_ = prediction.eval(session = sess, feed_dict={xs: X_train})
+        # prediction
         y_pred = prediction.eval(session = sess, feed_dict={xs: X_test})
         y_pred = y_pred * (max_load - min_load) + min_load
         # plot daily forecast
@@ -147,7 +143,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     tf.reset_default_graph() # reset the graph 
     sess.close() 
     
-    
+    # calculate average
     days_sample = n_days - 1 - n_train - n_lag
 
     return (MAPE_sum / days_sample, RMSPE_sum / days_sample)
@@ -157,7 +153,7 @@ if __name__ == "__main__":
     # number of days in training set    
     n_train = 40
     # number of lags
-    n_lag = 2
+    n_lag = 8
     # time intervals per day
     T= 96
    
