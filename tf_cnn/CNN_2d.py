@@ -26,7 +26,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     # maximum iteration
     Max_iter = 20000
     # stopping criteria
-    epsilon = 1e-4
+    epsilon = 1e-3
     last_l = 100000
     display_step = 100
     
@@ -56,7 +56,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
     pool1_flat = tf.reshape(pool1, [-1, T * n_lag * 16])
   
-    N_neuron = 100
+    N_neuron = 50
     # hidden layers
     (l1, w1, b1) = add_layer(pool1_flat, T * n_lag * 16, N_neuron, activation_function=tf.nn.relu)
     #(l2, w2, b2) = add_layer(l1, N_neuron, N_neuron, activation_function=tf.nn.tanh)
@@ -67,7 +67,7 @@ def NN_forecast(load_weekday, n_train, n_lag, T):
     # loss function, RMSPE
     #loss = tf.reduce_mean(tf.reduce_sum(tf.square(ys - prediction), 1))  
     loss = T * tf.reduce_mean(tf.square(ys - prediction) )  
-    loss += 1e-3 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
+    loss += 1e-2 * ( tf.nn.l2_loss(w1) + tf.nn.l2_loss(b1) + tf.nn.l2_loss(wo) + tf.nn.l2_loss(bo) )
     #loss += 1e-3 * ( tf.nn.l2_loss(w2) + tf.nn.l2_loss(b2) )
     # training step
     train_step = tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
