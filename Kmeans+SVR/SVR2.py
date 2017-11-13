@@ -9,9 +9,7 @@ from sklearn.svm import SVR
 from sklearn.multioutput import MultiOutputRegressor
 
 #### neural network forecast
-def SVR_forecast(n_lag, T, X_train, y_train, X_test, y_test, maxLoad, minLoad):
-    training_size = 50
-    
+def SVR_forecast(n_lag, T, X_train, y_train, X_test, y_test, maxLoad, minLoad):    
     # SVR regressor
     clf = SVR(C=10, epsilon=0.01)
     # stack SVRs together to forecast multiple outputs
@@ -45,9 +43,7 @@ def SVR_forecast(n_lag, T, X_train, y_train, X_test, y_test, maxLoad, minLoad):
         
         # update training set
         X_train = np.concatenate((X_train, X_test_d), axis = 0)
-        #X_train = X_train[-training_size:, :]
         y_train = np.vstack([y_train, y_test_d])
-        #y_train = X_train[-training_size:, :]        
         
     return (MAPE_sum / test_days, RMSPE_sum / test_days, test_days)
 
