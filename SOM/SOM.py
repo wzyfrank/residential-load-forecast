@@ -54,7 +54,7 @@ def callSOM(M, N, T, n_train, n_lag, load):
         
         if node in X_test_dict:
             X_test_dict[node] = np.vstack((X_test_dict[node], X_test[i, :]))
-            y_test_dict[node] = np.vstack((y_test_dict[node], y_train[i, :]))
+            y_test_dict[node] = np.vstack((y_test_dict[node], y_test[i, :]))
         else:
             X_test_dict[node] = np.zeros((1, T * n_lag))
             X_test_dict[node][0, :] = X_test[i, :]
